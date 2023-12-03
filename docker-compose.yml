@@ -1,0 +1,60 @@
+version: '3'
+
+services:
+    lb:
+        image: haproxy
+        ports:
+            - "8080:8080"
+        volumes:
+            - ./haproxy:/usr/local/etc/haproxy
+        depends_on:
+            - srv1
+            - srv2
+            - srv3
+            - srv4
+    srv1:
+        image: chatapp
+        environment:
+            - APPID=1111
+            - REDIS_HOST=redis://rds:6379
+            - MONGODB_URI=mongodb://mongodb:27017
+        depends_on:
+            - mongodb
+            - rds
+    srv2:
+        image: chatapp
+        environment:
+            - APPID=2222
+            - REDIS_HOST=redis://rds:6379
+            - MONGODB_URI=mongodb://mongodb:27017
+        depends_on:
+            - mongodb
+            - rds
+    srv3:
+        image: chatapp
+        environment:
+            - APPID=3333
+            - REDIS_HOST=redis://rds:6379
+            - MONGODB_URI=mongodb://mongodb:27017
+        depends_on:
+            - mongodb
+            - rds
+    srv4:
+        image: chatapp
+        environment:
+            - APPID=4444
+            - REDIS_HOST=redis://rds:6379
+            - MONGODB_URI=mongodb://mongodb:27017
+        depends_on:
+            - mongodb
+            - rds
+    rds:
+        image: redis:latest
+    mongodb:
+        image: mongo:latest
+        ports:
+            - '27018:27017'
+        volumes:
+            - chatapp-database:/data/db
+volumes:
+    chatapp-database: 

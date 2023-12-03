@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Widget with Socket.IO</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+        }
+
+        #chat-icon-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1;
+        }
+
+        #chat-icon {
+            background-color: #007bff;
+            color: #fff;
+            padding: 10px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        #chat-popup {
+            display: none;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 300px;
+            height: 400px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            background-color: #fff;
+            font-size: 14px;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #chat-header {
+            padding: 15px;
+            background-color: #007bff;
+            color: #fff;
+            text-align: center;
+            cursor: move;
+            user-select: none;
+            border-radius: 5px 5px 0 0;
+            position: relative;
+        }
+
+        #minimize-btn,
+        #close-btn {
+            cursor: pointer;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 18px;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        #minimize-btn {
+            right: 50px;
+        }
+
+        #close-btn {
+            right: 15px;
+        }
+
+        #minimize-btn:hover,
+        #close-btn:hover {
+            color: #ccc;
+        }
+
+        #chat-body {
+            padding: 15px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        #chat-input-container {
+            display: flex;
+            margin-top: 10px;
+        }
+
+        #chat-input {
+            flex: none;
+            /* padding: 10px; */
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px 0 0 5px;
+            outline: none;
+            resize: none;
+            font-size: 14px;
+        }
+
+        #send-btn {
+            margin-left: 250px;
+            width: 50px;
+            background-color: #007bff;
+            color: #fff;
+            position: absolute;
+            padding: 8px;
+            border: 1px solid #007bff;
+            border-radius: 0 5px 5px 0;
+            cursor: pointer;
+        }
+
+        #send-btn:hover {
+            background-color: #0056b3;
+        }
+
+        #user-details-form {
+            height: 360px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: absolute;
+            justify-content: center;
+            width: 260px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: calc(100% - 20px);
+            padding: 8px;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+
+        button {
+            background-color: #007bff;
+            color: #fff;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="chat-icon-container">
+        <div id="chat-icon" onclick="openChatPopup()">☰</div>
+    </div>
+
+    <div id="chat-popup">
+        <div id="chat-header">
+            Chat with host
+            <span id="minimize-btn" onclick="minimizeChat()">-</span>
+            <span id="close-btn" onclick="closeChat()">X</span>
+        </div>
+        <div id="chat-body"></div>
+        <div id="chat-input-container">
+            <input type="text" id="chat-input" placeholder="Type your message...">
+            <button id="send-btn" onclick="sendMessage()">Send</button>
+        </div>
+        <div id="user-details-form">
+            <h2>Enter Your Details</h2>
+            <label for="username">Name:</label>
+            <input type="text" id="username" required>
+            <label for="useremail">Email:</label>
+            <input type="email" id="useremail" required>
+            <label for="userphone">Phone:</label>
+            <input type="tel" id="userphone" required>
+            <button onclick="submitUserDetails()">Submit</button>
+        </div>
+    </div>
+
+    <!-- Include the Socket.IO library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.2/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.2.1/axios.min.js"></script>
+
+    <script>
+        // Add your custom code here
+
+        // Variables for user details
+        let userName, userEmail, userPhone;
+        let minimized = false;
+        let token = null;
+        let socket = null, chat = null;
+
+        // Connect to the Socket.IO server
+        async function connectSocket() {
+            socket = io('http://localhost:8080', {
+                withCredentials: true,
+                extraHeaders: {
+                    "Authorization": token
+                }
+            });
+
+            // Event listener for receiving messages from the server
+            socket.on('new-message', function (message) {
+                // Display the received message in the chat body
+                document.getElementById('chat-body').innerHTML += `<p><strong>${message.senderType}:</strong> ${message.message}</p>`;
+            });
+
+            const messages = await axios.get(`http://localhost:8080/api/v1/messages?chatId=${chat._id}`, {
+                headers: {
+                    "Authorization": token
+                }
+            });
+            for (let m of messages.data.data) {
+                document.getElementById('chat-body').innerHTML = `<p><strong>${m.senderType}:</strong> ${m.message}</p>` +
+                    document.getElementById('chat-body').innerHTML;
+            }
+        }
+
+        // Function to open the chat popup
+        function openChatPopup() {
+            // Show the user details form
+            document.getElementById('user-details-form').style.display = 'flex';
+            // Show the chat popup
+            document.getElementById('chat-popup').style.display = 'flex';
+        }
+
+        // Function to minimize the chat popup
+        function minimizeChat() {
+            minimized = !minimized;
+            const chatPopup = document.getElementById('chat-popup');
+            if (minimized) {
+                chatPopup.style.height = '40px';
+                chatPopup.style.overflow = 'hidden';
+                document.getElementById('chat-input-container').style.display = 'none';
+            } else {
+                chatPopup.style.height = '400px';
+                chatPopup.style.overflow = 'visible';
+                document.getElementById('chat-input-container').style.display = 'flex';
+            }
+        }
+
+        // Function to close the chat popup
+        async function closeChat() {
+            if (confirm("Are you sure you want to close the chat session?")) {
+                document.getElementById('chat-popup').style.display = 'none';
+            }
+
+            await axios.put(`http://127.0.0.1:8080/api/v1/chats/close?chatId=${chat._id}`, {}, {
+                headers: {
+                    "Authorization": token
+                }
+            })
+            chat = null;
+        }
+
+        // Function to submit user details
+        async function submitUserDetails() {
+            userName = document.getElementById('username').value;
+            userEmail = document.getElementById('useremail').value;
+            userPhone = document.getElementById('userphone').value;
+
+            // Get user
+            let res = await axios.post("http://localhost:8080/api/v1/users", {
+                email: userEmail,
+                phone: userPhone,
+                name: userName
+            });
+            let body = res.data;
+
+            if (body.success == false)
+                return alert(body.message);
+
+            // Get token
+            res = await axios.get(`http://localhost:8080/api/v1/users/sign?email=${userEmail}`);
+            body = res.data;
+
+            if (body.success == false)
+                return alert(body.message);
+
+            token = "bearer " + body.data.bearer;
+            console.log(token)
+
+            // Hide the user details form
+            document.getElementById('user-details-form').style.display = 'none';
+
+            // Show the chat input
+            document.getElementById('chat-input-container').style.display = 'flex';
+
+            // Get chat
+            res = await axios.post(`http://localhost:8080/api/v1/chats/`, {}, {
+                headers: {
+                    "Authorization": token
+                }
+            });
+            body = res.data;
+            if (body.success == false)
+                return alert(body.message);
+            chat = body.data;
+
+            await connectSocket();
+        }
+
+        // Function to send a chat message
+        function sendMessage() {
+            if (!chat.hostId) {
+                document.getElementById('chat-input').value = ''; // Clear the input field
+                alert("Host not assign yet please wait");
+            }
+            if (chat.status == "CLOSED") {
+                document.getElementById('chat-input').value = ''; // Clear the input field
+                alert("Chat is closed try opening new session");
+            }
+
+            // Handle sending the message to the server
+            let message = document.getElementById('chat-input').value;
+            socket.emit('send-message', { message }, (res) => {
+                alert("Message send!")
+            });
+            document.getElementById('chat-input').value = ''; // Clear the input field
+        }
+    </script>
+
+</body>
+
+</html>
